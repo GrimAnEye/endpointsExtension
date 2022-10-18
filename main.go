@@ -10,15 +10,8 @@ import (
 
 type (
 
-	// Context - a general structure containing a link to the bot,
-	// a copy of the current update and an array of custom
-	// fields to pass inside the handlers
-	Context struct {
-		// Copy of data from the update channel
-		U tgb.Update
-
-		// Link to the bot to send messages
-		B *tgb.BotAPI
+	// Router - a structure that contains handlers and performs routing of received updates.
+	Router struct {
 
 		// Array of endpoints and actions
 		endpoints []endpoint
@@ -26,6 +19,16 @@ type (
 		// An array of middleware.
 		// The top-level context is considered the first group
 		group *Group
+	}
+
+	// Context - a structure containing a copy of the update,
+	// a link to the bot and custom fields passed inside the handlers
+	Context struct {
+		// Copy of data from the update channel
+		U tgb.Update
+
+		// Link to the bot to send messages
+		B *tgb.BotAPI
 
 		// Custom Field - A map of custom fields to pass to endpoints via Context.
 		// Because it is an interface, you must always check the typeof a
@@ -41,7 +44,7 @@ type (
 
 	// Group - wrapper for grouping endpoints and middleware
 	Group struct {
-		c          *Context
+		r          *Router
 		middleware []MiddlewareFunc
 	}
 
@@ -53,14 +56,11 @@ type (
 	MiddlewareFunc func(HandleFunc) HandleFunc
 )
 
-// NewContext - формирует пакет контекста с текущим обновлением и ссылкой на бота
-func NewContext(u tgb.Update, b *tgb.BotAPI, customFields map[string]interface{}) *Context {
-	return &Context{
-		U:           u,
-		B:           b,
-		CustomField: customFields,
-		endpoints:   make([]endpoint, 0),
-		group:       &Group{},
+// NewRouter - creates a new, empty router
+func NewRouter() Router {
+	return Router{
+		endpoints: make([]endpoint, 0),
+		group:     &Group{},
 	}
 }
 
@@ -68,11 +68,11 @@ func NewContext(u tgb.Update, b *tgb.BotAPI, customFields map[string]interface{}
 Handler - checks the type and adds it to the endpoints
 array for further processing. In case of error, causes panic
 */
-func (c *Context) Handler(condition interface{}, h HandleFunc, m ...MiddlewareFunc) {
+func (r *Router) Handler(condition interface{}, h HandleFunc, m ...MiddlewareFunc) {
 
-	// Добавление глобального промежуточного ПО в общий список
-	if len(c.group.middleware) > 0 {
-		m = append(c.group.middleware, m...)
+	// Add global middleware to the general list
+	if len(r.group.middleware) > 0 {
+		m = append(r.group.middleware, m...)
 	}
 
 	// Packing an action into layers of middleware
@@ -83,8 +83,8 @@ func (c *Context) Handler(condition interface{}, h HandleFunc, m ...MiddlewareFu
 	// Condition type check
 	switch condition.(type) {
 
-	case string, func(c *Context) bool:
-		c.endpoints = append(c.endpoints, endpoint{
+	case string, func(r *Context) bool:
+		r.endpoints = append(r.endpoints, endpoint{
 			condition: condition,
 			action:    handler,
 		})
@@ -103,8 +103,8 @@ func applyMiddleWare(h HandleFunc, middleware ...MiddlewareFunc) HandleFunc {
 }
 
 // Use - adds middleware to the bot's global chain.
-func (c *Context) Use(middleware ...MiddlewareFunc) {
-	c.group.Use(middleware...)
+func (r *Router) Use(middleware ...MiddlewareFunc) {
+	r.group.Use(middleware...)
 }
 
 // Use - adds middleware to the group.
@@ -113,18 +113,21 @@ func (g *Group) Use(middleware ...MiddlewareFunc) {
 	g.middleware = append(g.middleware, middleware...)
 }
 
-// Добавляет
+// Handler - checks the type and adds it to the endpoints
+// array for further processing. In case of error, causes panic
 func (g *Group) Handler(c interface{}, h HandleFunc, m ...MiddlewareFunc) {
-	g.c.Handler(c, h, append(g.middleware, m...)...)
+	g.r.Handler(c, h, append(g.middleware, m...)...)
 }
 
-func (c *Context) Group() *Group {
-	return &Group{c: c}
+// Group - creates a new routing group, delegating upper layer middleware to it
+func (r *Router) Group() *Group {
+	return &Group{r: r}
 }
 
+// Group - like *router.Group, creates a new routing group by delegating top and parent level middleware to it.
 func (g *Group) Group() *Group {
 	return &Group{
-		c:          g.c,
+		r:          g.r,
 		middleware: g.middleware,
 	}
 }
@@ -134,8 +137,8 @@ Route - starts the verification process for all endpoints,
 and if a match is found, it stops the enumeration of conditions,
 for performing the assigned function.
 */
-func (c Context) Route() error {
-	for _, h := range c.endpoints {
+func (r Router) Route(c Context) error {
+	for _, h := range r.endpoints {
 
 		// Check endpoint condition
 		var allow bool
