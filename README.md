@@ -29,9 +29,9 @@ type TUser struct{
 	context.CustomField["data"] = TUser{Name: "Bob", Age: 18}
 
 // Passing the context to the router
-	go func(){
-		router.Route(context)
-	}()
+	go func(c ee.Context){
+		router.Route(c)
+	}(context)
 
 ...
 
