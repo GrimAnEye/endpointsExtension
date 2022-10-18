@@ -1,4 +1,4 @@
-module endpointsExtension
+module github.com/GrimAnEye/endpointsExtension
 
 go 1.16
 
