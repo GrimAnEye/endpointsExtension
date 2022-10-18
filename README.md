@@ -72,9 +72,9 @@ for update:=range updates{
 	context:=ee.Context{U: update,B:bot,CustomFields: make(map[string]interface{})}
 
 	// Starting routing in a goroutine so as not to slow down other updates
-	go func(){
-		router.Route(context)
-	}()
+	go func(c ee.Context){
+		router.Route(c)
+	}(context)
 }
 
 ```
